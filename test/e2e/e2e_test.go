@@ -361,41 +361,6 @@ func verify(inPath, keyPath string) error {
 	return nil
 }
 
-func verifyResource(inPath, keyPath, namespace, configPath string) error {
-	err := createTestResource(inPath, namespace)
-	if err != nil {
-		return err
-	}
-	obj, err := loadObjYAML(inPath)
-	if err != nil {
-		return err
-	}
-	objKind := obj.GetKind()
-	objName := obj.GetName()
-	cmd := cli.NewCmdVerifyResource()
-	b := bytes.NewBufferString("")
-	cmd.SetOut(b)
-
-	args := []string{objKind, "-n", namespace, objName}
-	if keyPath != "" {
-		args = append(args, "-k", keyPath)
-	}
-	if configPath != "" {
-		args = append(args, "-c", configPath)
-	}
-	args = append(args, "-o", "json")
-	cmd.SetArgs(args)
-	err = cli.KOptions.InitGet(cmd)
-	if err != nil {
-		return err
-	}
-	err = cmd.Execute()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func createTestResource(fname string, namespace string) error {
 	var obj *unstructured.Unstructured
 	var err error

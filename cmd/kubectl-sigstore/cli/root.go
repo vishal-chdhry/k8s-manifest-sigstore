@@ -63,7 +63,6 @@ func init() {
 
 	RootCmd.AddCommand(NewCmdSign())
 	RootCmd.AddCommand(NewCmdVerify())
-	RootCmd.AddCommand(NewCmdVerifyResource())
 	RootCmd.AddCommand(NewCmdApplyAfterVerify())
 	RootCmd.AddCommand(NewCmdManifestBuild())
 	RootCmd.AddCommand(NewCmdVersion())
