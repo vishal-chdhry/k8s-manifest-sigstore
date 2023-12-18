@@ -42,6 +42,7 @@ import (
 	"github.com/sigstore/k8s-manifest-sigstore/pkg/k8smanifest"
 	k8ssigutil "github.com/sigstore/k8s-manifest-sigstore/pkg/util"
 	"github.com/sigstore/k8s-manifest-sigstore/pkg/util/kubeutil"
+	"github.com/sigstore/k8s-manifest-sigstore/pkg/util/mapnode"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	metatable "k8s.io/apimachinery/pkg/api/meta/table"
@@ -500,7 +501,7 @@ func getObjsFromManifests(yamls [][]byte, ignoreFieldConfig k8smanifest.ObjectFi
 func getObjsByConstraint(constraintRef, matchField, inscopeField string, concurrencyNum int64) ([]unstructured.Unstructured, error) {
 	// step 1
 	// get Constraint resource from cluster and extract its gatekeeper match condition and `inScopeObjects` in parameters
-	constraintMatch, inScopeObjectCondition, err := k8smanifest.GetMatchConditionFromConfigResource(constraintRef, matchField, inscopeField)
+	constraintMatch, inScopeObjectCondition, err := GetMatchConditionFromConfigResource(constraintRef, matchField, inscopeField)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get a match condition from config resource `%s`", constraintRef)
 	}
@@ -655,6 +656,77 @@ func getObjsByConstraint(constraintRef, matchField, inscopeField string, concurr
 	}
 
 	return objs, nil
+}
+
+func GetMatchConditionFromConfigResource(configPath, matchField, inScopeObjectField string) (*gkmatch.Match, *k8smanifest.ObjectReferenceList, error) {
+	configObj, err := k8smanifest.GetConfigResource(configPath)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to get config resource")
+	}
+	match, err := getMatchConditionInConstraint(configObj, matchField)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to get match condition from a config resource %s", configObj.GetName())
+	}
+	var iscopeCondition *k8smanifest.ObjectReferenceList
+	if inScopeObjectField != "" {
+		iscopeCondition, err = parseInScopeObjectInConstraint(configObj, inScopeObjectField)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to get inScopeObject condition from a field `%s` in a config resource %s", inScopeObjectField, configObj.GetName())
+		}
+	}
+
+	return match, iscopeCondition, nil
+}
+
+func getMatchConditionInConstraint(configObj *unstructured.Unstructured, matchField string) (*gkmatch.Match, error) {
+	objNode, err := mapnode.NewFromMap(configObj.Object)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load config object as mapnode")
+	}
+	matchData, ok := objNode.Get(matchField)
+	if !ok {
+		return nil, fmt.Errorf("failed to find `%s` in `%s`", matchField, configObj.GetName())
+	}
+	var matchBytes []byte
+	switch m := matchData.(type) {
+	case *mapnode.Node:
+		matchBytes = []byte(m.ToJson())
+	default:
+		return nil, fmt.Errorf("cannot handle this type for match condition object: %T", m)
+	}
+	log.Debug("found match condition bytes: ", string(matchBytes))
+	var match *gkmatch.Match
+	err = yaml.Unmarshal(matchBytes, &match)
+	if err != nil {
+		return nil, err
+	}
+	return match, nil
+}
+
+func parseInScopeObjectInConstraint(configObj *unstructured.Unstructured, inScopeObjectField string) (*k8smanifest.ObjectReferenceList, error) {
+	objNode, err := mapnode.NewFromMap(configObj.Object)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load config object as mapnode")
+	}
+	inScopeObjectData, ok := objNode.Get(inScopeObjectField)
+	if !ok {
+		log.Debugf("failed to find `%s` in `%s`", inScopeObjectField, configObj.GetName())
+		return nil, nil
+	}
+	var inScopeObjectBytes []byte
+	switch d := inScopeObjectData.(type) {
+	case *mapnode.Node:
+		inScopeObjectBytes = []byte(d.ToJson())
+	default:
+		return nil, fmt.Errorf("cannot handle this type for inScopeObject condition object: %T", d)
+	}
+	log.Debug("found inScopeObject condition bytes: ", string(inScopeObjectBytes))
+	var inScopeCondition *k8smanifest.ObjectReferenceList
+	err = yaml.Unmarshal(inScopeObjectBytes, &inScopeCondition)
+	if err != nil {
+		return nil, err
+	}
+	return inScopeCondition, nil
 }
 
 func getObjsByConstraintWithCache(constraintRef, matchField, inscopeField string, concurrencyNum int64) ([]unstructured.Unstructured, error) {

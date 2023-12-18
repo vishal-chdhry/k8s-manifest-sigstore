@@ -26,7 +26,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/ghodss/yaml"
-	gkmatch "github.com/open-policy-agent/gatekeeper/pkg/mutation/match"
 	"github.com/pkg/errors"
 	"github.com/sigstore/cosign/v2/pkg/cosign"
 	k8ssigutil "github.com/sigstore/k8s-manifest-sigstore/pkg/util"
@@ -418,26 +417,6 @@ func GetConfigResource(configPath string) (*unstructured.Unstructured, error) {
 	return configObj, nil
 }
 
-func GetMatchConditionFromConfigResource(configPath, matchField, inScopeObjectField string) (*gkmatch.Match, *ObjectReferenceList, error) {
-	configObj, err := GetConfigResource(configPath)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to get config resource")
-	}
-	match, err := getMatchConditionInConstraint(configObj, matchField)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to get match condition from a config resource %s", configObj.GetName())
-	}
-	var iscopeCondition *ObjectReferenceList
-	if inScopeObjectField != "" {
-		iscopeCondition, err = parseInScopeObjectInConstraint(configObj, inScopeObjectField)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "failed to get inScopeObject condition from a field `%s` in a config resource %s", inScopeObjectField, configObj.GetName())
-		}
-	}
-
-	return match, iscopeCondition, nil
-}
-
 func parseConfigObj(configObj *unstructured.Unstructured, configField string) (*VerifyResourceOption, error) {
 	objNode, err := mapnode.NewFromMap(configObj.Object)
 	if err != nil {
@@ -470,57 +449,6 @@ func parseConfigObj(configObj *unstructured.Unstructured, configField string) (*
 		option.ResourceBundleRef = resBundleRefInConfigObj
 	}
 	return option, nil
-}
-
-func getMatchConditionInConstraint(configObj *unstructured.Unstructured, matchField string) (*gkmatch.Match, error) {
-	objNode, err := mapnode.NewFromMap(configObj.Object)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load config object as mapnode")
-	}
-	matchData, ok := objNode.Get(matchField)
-	if !ok {
-		return nil, fmt.Errorf("failed to find `%s` in `%s`", matchField, configObj.GetName())
-	}
-	var matchBytes []byte
-	switch m := matchData.(type) {
-	case *mapnode.Node:
-		matchBytes = []byte(m.ToJson())
-	default:
-		return nil, fmt.Errorf("cannot handle this type for match condition object: %T", m)
-	}
-	log.Debug("found match condition bytes: ", string(matchBytes))
-	var match *gkmatch.Match
-	err = yaml.Unmarshal(matchBytes, &match)
-	if err != nil {
-		return nil, err
-	}
-	return match, nil
-}
-
-func parseInScopeObjectInConstraint(configObj *unstructured.Unstructured, inScopeObjectField string) (*ObjectReferenceList, error) {
-	objNode, err := mapnode.NewFromMap(configObj.Object)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load config object as mapnode")
-	}
-	inScopeObjectData, ok := objNode.Get(inScopeObjectField)
-	if !ok {
-		log.Debugf("failed to find `%s` in `%s`", inScopeObjectField, configObj.GetName())
-		return nil, nil
-	}
-	var inScopeObjectBytes []byte
-	switch d := inScopeObjectData.(type) {
-	case *mapnode.Node:
-		inScopeObjectBytes = []byte(d.ToJson())
-	default:
-		return nil, fmt.Errorf("cannot handle this type for inScopeObject condition object: %T", d)
-	}
-	log.Debug("found inScopeObject condition bytes: ", string(inScopeObjectBytes))
-	var inScopeCondition *ObjectReferenceList
-	err = yaml.Unmarshal(inScopeObjectBytes, &inScopeCondition)
-	if err != nil {
-		return nil, err
-	}
-	return inScopeCondition, nil
 }
 
 func (vo *VerifyResourceOption) AddDefaultConfig(defaultConfig *VerifyResourceOption) *VerifyResourceOption {
