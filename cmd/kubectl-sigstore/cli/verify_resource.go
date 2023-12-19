@@ -505,7 +505,7 @@ func getObjsByConstraint(constraintRef, matchField, inscopeField string, concurr
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get a match condition from config resource `%s`", constraintRef)
 	}
-	constraintMatch, err := getMatchConditionFromConfigObject(constraintRef, matchField)
+	constraintMatch, err := GetMatchConditionFromConfigObject(constraintRef, matchField)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get match condition from a config resource %s", constraintRef)
 	}
@@ -662,7 +662,7 @@ func getObjsByConstraint(constraintRef, matchField, inscopeField string, concurr
 	return objs, nil
 }
 
-func getMatchConditionFromConfigObject(configPath string, matchField string) (*gkmatch.Match, error) {
+func GetMatchConditionFromConfigObject(configPath string, matchField string) (*gkmatch.Match, error) {
 	configObj, err := k8smanifest.GetConfigResource(configPath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get config resource")
